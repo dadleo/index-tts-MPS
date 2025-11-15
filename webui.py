@@ -1,85 +1,22 @@
-# File: app/webui.py (Modified)
-
 import html
 import json
 import os
 import sys
 import threading
 import time
-import argparse
 
 import warnings
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# --- MODIFICATION START: ADD SELF-HEALING MODEL DOWNLOADER ---
-import requests
-from tqdm import tqdm
-
-# A dictionary of all required files and their download URLs
-FILES_TO_DOWNLOAD = {
-    "checkpoints/bpe.model": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/bpe.model",
-    "checkpoints/config.yaml": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/config.yaml",
-    "checkpoints/feat1.pt": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/feat1.pt",
-    "checkpoints/feat2.pt": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/feat2.pt",
-    "checkpoints/gpt.pth": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/gpt.pth",
-    "checkpoints/s2mel.pth": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/s2mel.pth",
-    "checkpoints/wav2vec2bert_stats.pt": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/wav2vec2bert_stats.pt",
-}
-
-QWEN_FILES = {
-    "checkpoints/qwen0.6bemo4-merge/config.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/config.json",
-    "checkpoints/qwen0.6bemo4-merge/generation_config.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/generation_config.json",
-    "checkpoints/qwen0.6bemo4-merge/model.safetensors": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/model.safetensors",
-    "checkpoints/qwen0.6bemo4-merge/special_tokens_map.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/special_tokens_map.json",
-    "checkpoints/qwen0.6bemo4-merge/tokenizer.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/tokenizer.json",
-    "checkpoints/qwen0.6bemo4-merge/tokenizer_config.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/tokenizer_config.json",
-}
-
-def download_file(url, path):
-    """Downloads a file with a progress bar."""
-    try:
-        print(f"Downloading {os.path.basename(path)}...")
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        total_size = int(response.headers.get('content-length', 0))
-        
-        with open(path, 'wb') as f, tqdm(
-            desc=os.path.basename(path), total=total_size, unit='iB',
-            unit_scale=True, unit_divisor=1024,
-        ) as bar:
-            for chunk in response.iter_content(chunk_size=8192):
-                size = f.write(chunk)
-                bar.update(size)
-    except Exception as e:
-        print(f"Error downloading {url}: {e}")
-        if os.path.exists(path):
-            os.remove(path) # Clean up partial downloads
-        sys.exit(1)
-
-def setup_models():
-    """Checks for all required files and downloads them if missing."""
-    print("--- Verifying and Downloading Models ---")
-    os.makedirs("checkpoints/qwen0.6bemo4-merge", exist_ok=True)
-    
-    all_files = {**FILES_TO_DOWNLOAD, **QWEN_FILES}
-    for path, url in all_files.items():
-        # Check if file is missing or empty
-        if not os.path.exists(path) or os.path.getsize(path) == 0:
-            download_file(url, path)
-        else:
-            print(f"Model file verified: {path}")
-    print("--- Model Verification Complete ---")
-
-# --- MODIFICATION END ---
-
-# Original imports
 import pandas as pd
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 sys.path.append(os.path.join(current_dir, "indextts"))
 
-# Argument Parsing
+import argparse
 parser = argparse.ArgumentParser(
     description="IndexTTS WebUI",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -94,31 +31,30 @@ parser.add_argument("--cuda_kernel", action="store_true", default=False, help="U
 parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max tokens per generation segment")
 cmd_args = parser.parse_args()
 
-# --- MODIFICATION: REPLACE FILE CHECK WITH DOWNLOADER CALL ---
-# The original file checks are now replaced by this single function call.
-setup_models()
-# --- END MODIFICATION ---
+# --- MODIFICATION START ---
+# The original pre-emptive file check that caused the script to exit has been removed.
+# This allows the script to proceed to the IndexTTS2 class initialization,
+# which correctly handles its own model downloads from Hugging Face.
+# --- MODIFICATION END ---
 
-# The rest of the file remains the same...
 import gradio as gr
 from indextts.infer_v2 import IndexTTS2
 from tools.i18n.i18n import I18nAuto
 
 i18n = I18nAuto(language="Auto")
 MODE = 'local'
+
+# Ensure the checkpoints directory exists so the downloader has a place to save files.
+os.makedirs(cmd_args.model_dir, exist_ok=True)
+
 tts = IndexTTS2(model_dir=cmd_args.model_dir,
                 cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
                 use_fp16=cmd_args.fp16,
                 use_deepspeed=cmd_args.deepspeed,
                 use_cuda_kernel=cmd_args.cuda_kernel,
                 )
-# (The entire Gradio UI code from your provided original file continues here, unchanged)
-# ...
-# The rest of your webui.py file is correct and doesn't need to be pasted again.
-# Just ensure the download logic is at the top and the setup_models() call
-# replaces the old file checking loop.
 
-# --- PASTE THE REST OF THE ORIGINAL webui.py FROM HERE ---
+# --- The rest of the file is the original, unchanged Gradio UI code ---
 LANGUAGES = {
     "中文": "zh_CN",
     "English": "en_US"
@@ -201,11 +137,9 @@ def gen_single(emo_control_method,prompt, text,
         vec = [vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
         vec = tts.normalize_emo_vec(vec, apply_bias=True)
     else:
-        # don't use the emotion vector inputs for the other modes
         vec = None
 
     if emo_text == "":
-        # erase empty emotion descriptions; `infer()` will then automatically use the main prompt
         emo_text = None
 
     print(f"Emo control mode:{emo_control_method},weight:{emo_weight},vec:{vec}")
@@ -255,7 +189,6 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
         experimental_checkbox = gr.Checkbox(label=i18n("显示实验功能"), value=False)
 
         with gr.Accordion(i18n("功能设置")):
-            # 情感控制选项部分
             with gr.Row():
                 emo_control_method = gr.Radio(
                     choices=EMO_CHOICES_OFFICIAL,
@@ -265,7 +198,8 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                     choices=EMO_CHOICES_ALL,
                     type="index",
                     value=EMO_CHOICES_ALL[0], label=i18n("情感控制方式"),
-                    visible=False)  # do not render
+                    visible=False)
+
         with gr.Group(visible=False) as emotion_reference_group:
             with gr.Row():
                 emo_upload = gr.Audio(label=i18n("上传情感参考音频"), type="filepath")
@@ -347,129 +281,72 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
     def on_example_click(example):
         print(f"Example clicked: ({len(example)} values) = {example!r}")
         return (
-            gr.update(value=example[0]),
-            gr.update(value=example[1]),
-            gr.update(value=example[2]),
-            gr.update(value=example[3]),
-            gr.update(value=example[4]),
-            gr.update(value=example[5]),
-            gr.update(value=example[6]),
-            gr.update(value=example[7]),
-            gr.update(value=example[8]),
-            gr.update(value=example[9]),
-            gr.update(value=example[10]),
-            gr.update(value=example[11]),
-            gr.update(value=example[12]),
-            gr.update(value=example[13]),
+            gr.update(value=example[0]), gr.update(value=example[1]), gr.update(value=example[2]),
+            gr.update(value=example[3]), gr.update(value=example[4]), gr.update(value=example[5]),
+            gr.update(value=example[6]), gr.update(value=example[7]), gr.update(value=example[8]),
+            gr.update(value=example[9]), gr.update(value=example[10]), gr.update(value=example[11]),
+            gr.update(value=example[12]), gr.update(value=example[13]),
         )
 
     example_table.click(on_example_click,
                         inputs=[example_table],
-                        outputs=[prompt_audio,
-                                 emo_control_method,
-                                 input_text_single,
-                                 emo_upload,
-                                 emo_weight,
-                                 emo_text,
-                                 vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
+                        outputs=[prompt_audio, emo_control_method, input_text_single, emo_upload, emo_weight,
+                                 emo_text, vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
     )
 
     def on_input_text_change(text, max_text_tokens_per_segment):
         if text and len(text) > 0:
             text_tokens_list = tts.tokenizer.tokenize(text)
-
             segments = tts.tokenizer.split_segments(text_tokens_list, max_text_tokens_per_segment=int(max_text_tokens_per_segment))
             data = []
             for i, s in enumerate(segments):
                 segment_str = ''.join(s)
                 tokens_count = len(s)
                 data.append([i, segment_str, tokens_count])
-            return {
-                segments_preview: gr.update(value=data, visible=True, type="array"),
-            }
+            return { segments_preview: gr.update(value=data, visible=True, type="array"), }
         else:
             df = pd.DataFrame([], columns=[i18n("序号"), i18n("分句内容"), i18n("Token数")])
-            return {
-                segments_preview: gr.update(value=df),
-            }
+            return { segments_preview: gr.update(value=df), }
 
     def on_method_change(emo_control_method):
-        if emo_control_method == 1:  # emotion reference audio
-            return (gr.update(visible=True),
-                    gr.update(visible=False),
-                    gr.update(visible=False),
-                    gr.update(visible=False),
-                    gr.update(visible=True)
-                    )
-        elif emo_control_method == 2:  # emotion vectors
-            return (gr.update(visible=False),
-                    gr.update(visible=True),
-                    gr.update(visible=True),
-                    gr.update(visible=False),
-                    gr.update(visible=True)
-                    )
-        elif emo_control_method == 3:  # emotion text description
-            return (gr.update(visible=False),
-                    gr.update(visible=True),
-                    gr.update(visible=False),
-                    gr.update(visible=True),
-                    gr.update(visible=True)
-                    )
-        else:  # 0: same as speaker voice
-            return (gr.update(visible=False),
-                    gr.update(visible=False),
-                    gr.update(visible=False),
-                    gr.update(visible=False),
-                    gr.update(visible=False)
-                    )
+        if emo_control_method == 1: return (gr.update(visible=True), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+        elif emo_control_method == 2: return (gr.update(visible=False), gr.update(visible=True), gr.update(visible=True), gr.update(visible=False), gr.update(visible=True))
+        elif emo_control_method == 3: return (gr.update(visible=False), gr.update(visible=True), gr.update(visible=False), gr.update(visible=True), gr.update(visible=True))
+        else: return (gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False))
 
-    emo_control_method.change(on_method_change,
-        inputs=[emo_control_method],
-        outputs=[emotion_reference_group,
-                 emotion_randomize_group,
-                 emotion_vector_group,
-                 emo_text_group,
-                 emo_weight_group]
+    emo_control_method.change(on_method_change, inputs=[emo_control_method],
+        outputs=[emotion_reference_group, emotion_randomize_group, emotion_vector_group, emo_text_group, emo_weight_group]
     )
 
     def on_experimental_change(is_experimental, current_mode_index):
         new_choices = EMO_CHOICES_ALL if is_experimental else EMO_CHOICES_OFFICIAL
         new_index = current_mode_index if current_mode_index < len(new_choices) else 0
+        return (gr.update(choices=new_choices, value=new_choices[new_index]),
+                gr.update(samples=get_example_cases(include_experimental=is_experimental)),)
 
-        return (
-            gr.update(choices=new_choices, value=new_choices[new_index]),
-            gr.update(samples=get_example_cases(include_experimental=is_experimental)),
-        )
-
-    experimental_checkbox.change(
-        on_experimental_change,
+    experimental_checkbox.change(on_experimental_change,
         inputs=[experimental_checkbox, emo_control_method],
         outputs=[emo_control_method, example_table]
     )
 
-    input_text_single.change(
-        on_input_text_change,
+    input_text_single.change(on_input_text_change,
         inputs=[input_text_single, max_text_tokens_per_segment],
         outputs=[segments_preview]
     )
 
-    max_text_tokens_per_segment.change(
-        on_input_text_change,
+    max_text_tokens_per_segment.change(on_input_text_change,
         inputs=[input_text_single, max_text_tokens_per_segment],
         outputs=[segments_preview]
     )
 
-    prompt_audio.upload(update_prompt_audio,
-                         inputs=[],
-                         outputs=[gen_button])
+    prompt_audio.upload(update_prompt_audio, inputs=[], outputs=[gen_button])
 
     gen_button.click(gen_single,
                      inputs=[emo_control_method,prompt_audio, input_text_single, emo_upload, emo_weight,
                             vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
                              emo_text,emo_random,
                              max_text_tokens_per_segment,
-                             *advanced_params,
-                     ],
+                             *advanced_params,],
                      outputs=[output_audio])
 
 if __name__ == "__main__":
