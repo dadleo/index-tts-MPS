@@ -1,6 +1,13 @@
 import os
 from subprocess import CalledProcessError
 
+# --- MPS MODIFICATION START ---
+# This MUST be set before torch is imported.
+# It enables a fallback to the CPU for operations not yet implemented in MPS,
+# preventing crashes with "NotImplementedError" for certain operators.
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+# --- MPS MODIFICATION END ---
+
 os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
 
 import json
@@ -67,7 +74,7 @@ class IndexTTS2:
             self.device = "xpu"
             self.use_fp16 = use_fp16
             self.use_cuda_kernel = False
-        elif hasattr(torch, "mps") and torch.backends.mps.is_available():
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             self.device = "mps"
             self.use_fp16 = False                     # <--- MPS: fp16 is slower / not supported
             self.use_cuda_kernel = False
@@ -719,9 +726,12 @@ class QwenEmotion:
     def __init__(self, model_dir):
         self.model_dir = model_dir
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_dir)
+        # --- MPS MODIFICATION START ---
+        # Changed torch_dtype from "float16" to torch.float32 for stability on MPS.
         self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_dir, torch_dtype="float16"  # auto device_map not needed on MPS
+            self.model_dir, torch_dtype=torch.float32
         )
+        # --- MPS MODIFICATION END ---
         self.prompt = "文本情感分类"
         self.cn_key_to_en = {
             "高兴": "happy",
