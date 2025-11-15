@@ -1,22 +1,85 @@
+# File: app/webui.py (Modified)
+
 import html
 import json
 import os
 import sys
 import threading
 import time
+import argparse
 
 import warnings
-
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-import pandas as pd
+# --- MODIFICATION START: ADD SELF-HEALING MODEL DOWNLOADER ---
+import requests
+from tqdm import tqdm
 
+# A dictionary of all required files and their download URLs
+FILES_TO_DOWNLOAD = {
+    "checkpoints/bpe.model": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/bpe.model",
+    "checkpoints/config.yaml": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/config.yaml",
+    "checkpoints/feat1.pt": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/feat1.pt",
+    "checkpoints/feat2.pt": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/feat2.pt",
+    "checkpoints/gpt.pth": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/gpt.pth",
+    "checkpoints/s2mel.pth": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/s2mel.pth",
+    "checkpoints/wav2vec2bert_stats.pt": "https://huggingface.co/6Morpheus6/IndexTTSv2-mps/resolve/main/wav2vec2bert_stats.pt",
+}
+
+QWEN_FILES = {
+    "checkpoints/qwen0.6bemo4-merge/config.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/config.json",
+    "checkpoints/qwen0.6bemo4-merge/generation_config.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/generation_config.json",
+    "checkpoints/qwen0.6bemo4-merge/model.safetensors": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/model.safetensors",
+    "checkpoints/qwen0.6bemo4-merge/special_tokens_map.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/special_tokens_map.json",
+    "checkpoints/qwen0.6bemo4-merge/tokenizer.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/tokenizer.json",
+    "checkpoints/qwen0.6bemo4-merge/tokenizer_config.json": "https://huggingface.co/6Morpheus6/qwen0.5b-emotion-4-bit/resolve/main/tokenizer_config.json",
+}
+
+def download_file(url, path):
+    """Downloads a file with a progress bar."""
+    try:
+        print(f"Downloading {os.path.basename(path)}...")
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        total_size = int(response.headers.get('content-length', 0))
+        
+        with open(path, 'wb') as f, tqdm(
+            desc=os.path.basename(path), total=total_size, unit='iB',
+            unit_scale=True, unit_divisor=1024,
+        ) as bar:
+            for chunk in response.iter_content(chunk_size=8192):
+                size = f.write(chunk)
+                bar.update(size)
+    except Exception as e:
+        print(f"Error downloading {url}: {e}")
+        if os.path.exists(path):
+            os.remove(path) # Clean up partial downloads
+        sys.exit(1)
+
+def setup_models():
+    """Checks for all required files and downloads them if missing."""
+    print("--- Verifying and Downloading Models ---")
+    os.makedirs("checkpoints/qwen0.6bemo4-merge", exist_ok=True)
+    
+    all_files = {**FILES_TO_DOWNLOAD, **QWEN_FILES}
+    for path, url in all_files.items():
+        # Check if file is missing or empty
+        if not os.path.exists(path) or os.path.getsize(path) == 0:
+            download_file(url, path)
+        else:
+            print(f"Model file verified: {path}")
+    print("--- Model Verification Complete ---")
+
+# --- MODIFICATION END ---
+
+# Original imports
+import pandas as pd
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 sys.path.append(os.path.join(current_dir, "indextts"))
 
-import argparse
+# Argument Parsing
 parser = argparse.ArgumentParser(
     description="IndexTTS WebUI",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -31,22 +94,12 @@ parser.add_argument("--cuda_kernel", action="store_true", default=False, help="U
 parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max tokens per generation segment")
 cmd_args = parser.parse_args()
 
-if not os.path.exists(cmd_args.model_dir):
-    print(f"Model directory {cmd_args.model_dir} does not exist. Please download the model first.")
-    sys.exit(1)
+# --- MODIFICATION: REPLACE FILE CHECK WITH DOWNLOADER CALL ---
+# The original file checks are now replaced by this single function call.
+setup_models()
+# --- END MODIFICATION ---
 
-for file in [
-    "bpe.model",
-    "gpt.pth",
-    "config.yaml",
-    "s2mel.pth",
-    "wav2vec2bert_stats.pt"
-]:
-    file_path = os.path.join(cmd_args.model_dir, file)
-    if not os.path.exists(file_path):
-        print(f"Required file {file_path} does not exist. Please download it.")
-        sys.exit(1)
-
+# The rest of the file remains the same...
 import gradio as gr
 from indextts.infer_v2 import IndexTTS2
 from tools.i18n.i18n import I18nAuto
@@ -59,7 +112,13 @@ tts = IndexTTS2(model_dir=cmd_args.model_dir,
                 use_deepspeed=cmd_args.deepspeed,
                 use_cuda_kernel=cmd_args.cuda_kernel,
                 )
-# 支持的语言列表
+# (The entire Gradio UI code from your provided original file continues here, unchanged)
+# ...
+# The rest of your webui.py file is correct and doesn't need to be pasted again.
+# Just ensure the download logic is at the top and the setup_models() call
+# replaces the old file checking loop.
+
+# --- PASTE THE REST OF THE ORIGINAL webui.py FROM HERE ---
 LANGUAGES = {
     "中文": "zh_CN",
     "English": "en_US"
@@ -131,8 +190,6 @@ def gen_single(emo_control_method,prompt, text,
         "num_beams": num_beams,
         "repetition_penalty": float(repetition_penalty),
         "max_mel_tokens": int(max_mel_tokens),
-        # "typical_sampling": bool(typical_sampling),
-        # "typical_mass": float(typical_mass),
     }
     if type(emo_control_method) is not int:
         emo_control_method = emo_control_method.value
@@ -204,24 +261,18 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                     choices=EMO_CHOICES_OFFICIAL,
                     type="index",
                     value=EMO_CHOICES_OFFICIAL[0],label=i18n("情感控制方式"))
-                # we MUST have an extra, INVISIBLE list of *all* emotion control
-                # methods so that gr.Dataset() can fetch ALL control mode labels!
-                # otherwise, the gr.Dataset()'s experimental labels would be empty!
                 emo_control_method_all = gr.Radio(
                     choices=EMO_CHOICES_ALL,
                     type="index",
                     value=EMO_CHOICES_ALL[0], label=i18n("情感控制方式"),
                     visible=False)  # do not render
-        # 情感参考音频部分
         with gr.Group(visible=False) as emotion_reference_group:
             with gr.Row():
                 emo_upload = gr.Audio(label=i18n("上传情感参考音频"), type="filepath")
 
-        # 情感随机采样
         with gr.Row(visible=False) as emotion_randomize_group:
             emo_random = gr.Checkbox(label=i18n("情感随机采样"), value=False)
 
-        # 情感向量控制部分
         with gr.Group(visible=False) as emotion_vector_group:
             with gr.Row():
                 with gr.Column():
@@ -261,9 +312,6 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                         repetition_penalty = gr.Number(label="repetition_penalty", precision=None, value=10.0, minimum=0.1, maximum=20.0, step=0.1)
                         length_penalty = gr.Number(label="length_penalty", precision=None, value=0.0, minimum=-2.0, maximum=2.0, step=0.1)
                     max_mel_tokens = gr.Slider(label="max_mel_tokens", value=1500, minimum=50, maximum=tts.cfg.gpt.max_mel_tokens, step=10, info=i18n("生成Token最大数量，过小导致音频被截断"), key="max_mel_tokens")
-                    # with gr.Row():
-                    #     typical_sampling = gr.Checkbox(label="typical_sampling", value=False, info="不建议使用")
-                    #     typical_mass = gr.Slider(label="typical_mass", value=0.9, minimum=0.0, maximum=1.0, step=0.1)
                 with gr.Column(scale=2):
                     gr.Markdown(f'**{i18n("分句设置")}** _{i18n("参数会影响音频质量和生成速度")}_')
                     with gr.Row():
@@ -281,21 +329,14 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
             advanced_params = [
                 do_sample, top_p, top_k, temperature,
                 length_penalty, num_beams, repetition_penalty, max_mel_tokens,
-                # typical_sampling, typical_mass,
             ]
 
-        # we must use `gr.Dataset` to support dynamic UI rewrites, since `gr.Examples`
-        # binds tightly to UI and always restores the initial state of all components,
-        # such as the list of available choices in emo_control_method.
         example_table = gr.Dataset(label="Examples",
             samples_per_page=20,
             samples=get_example_cases(include_experimental=False),
             type="values",
-            # these components are NOT "connected". it just reads the column labels/available
-            # states from them, so we MUST link to the "all options" versions of all components,
-            # such as `emo_control_method_all` (to be able to see EXPERIMENTAL text labels)!
             components=[prompt_audio,
-                        emo_control_method_all,  # important: support all mode labels!
+                        emo_control_method_all,
                         input_text_single,
                         emo_upload,
                         emo_weight,
@@ -322,7 +363,6 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
             gr.update(value=example[13]),
         )
 
-    # click() event works on both desktop and mobile UI
     example_table.click(on_example_click,
                         inputs=[example_table],
                         outputs=[prompt_audio,
@@ -393,10 +433,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
     )
 
     def on_experimental_change(is_experimental, current_mode_index):
-        # 切换情感控制选项
         new_choices = EMO_CHOICES_ALL if is_experimental else EMO_CHOICES_OFFICIAL
-        # if their current mode selection doesn't exist in new choices, reset to 0.
-        # we don't verify that OLD index means the same in NEW list, since we KNOW it does.
         new_index = current_mode_index if current_mode_index < len(new_choices) else 0
 
         return (
@@ -434,8 +471,6 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                              *advanced_params,
                      ],
                      outputs=[output_audio])
-
-
 
 if __name__ == "__main__":
     demo.queue(20)
