@@ -377,10 +377,10 @@ class QwenEmotion:
     def __init__(self, model_dir):
         self.model_dir = model_dir
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_dir)
-        # --- MPS MODIFICATION START ---
-        # Changed torch_dtype from "float16" to torch.float32 for stability on MPS.
-        self.model = AutoModelForCausalLM.from_pretrained(self.model_dir, torch_dtype=torch.float32)
-        # --- MPS MODIFICATION END ---
+        # MPS Stability Fix 2: Must use float32
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.model_dir, torch_dtype=torch.float32
+        )
         self.prompt = "文本情感分类"
         self.cn_key_to_en = { "高兴": "happy", "愤怒": "angry", "悲伤": "sad", "恐惧": "afraid", "反感": "disgusted", "低落": "melancholic", "惊讶": "surprised", "自然": "calm" }
         self.desired_vector_order = ["高兴", "愤怒", "悲伤", "恐惧", "反感", "低落", "惊讶", "自然"]
