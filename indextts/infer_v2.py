@@ -3,8 +3,6 @@ from subprocess import CalledProcessError
 
 # --- MPS MODIFICATION START ---
 # This MUST be set before torch is imported.
-# It enables a fallback to the CPU for operations not yet implemented in MPS,
-# preventing crashes with "NotImplementedError" for certain operators.
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 # --- MPS MODIFICATION END ---
 
